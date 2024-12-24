@@ -27,14 +27,15 @@ class XmasGame {
         
         // Add cannon properties
         this.maxThrowPower = 60;
-        this.currentPower = 30; // Default power
+        this.currentPower = 21; // Reduced from 30 to 21 (30% lower)
         
         // Setup scene and objects in correct order
         this.setupScene();
         this.setupSnowfall();  // Add snow system
         this.setupCannon();
-        this.setupCard();
+        this.setupCard('antti.png');  // Start with default card
         this.setupControls();
+        this.setupCardSelection();  // Add card selection setup
         
         window.addEventListener('resize', this.handleResize.bind(this));
         
@@ -45,12 +46,12 @@ class XmasGame {
     initPhysics() {
         // Create physics world with basic settings
         this.world = new CANNON.World();
-        this.world.gravity.set(0, -9.82/4, 0); // Slowed down gravity by 4x
+        this.world.gravity.set(0, -9.82, 0);
         this.world.broadphase = new CANNON.NaiveBroadphase();
         
-        // More iterations for better stability
-        this.world.solver.iterations = 20;
-        this.world.solver.tolerance = 0.001;
+        // Increased iterations for better collision detection
+        this.world.solver.iterations = 20;  // Increased from 10 to 20
+        this.world.solver.tolerance = 0.0001;  // Reduced tolerance for more accurate solving
 
         // Set up contact material properties
         const defaultMaterial = new CANNON.Material();
@@ -59,9 +60,11 @@ class XmasGame {
             defaultMaterial,
             {
                 friction: 0.3,
-                restitution: 0.3,  // Reduced from 0.3 for less bounce
-                contactEquationStiffness: 1e6,
-                contactEquationRelaxation: 4
+                restitution: 0.3,
+                contactEquationStiffness: 1e7,  // Increased stiffness
+                contactEquationRelaxation: 3,   // Reduced relaxation
+                frictionEquationStiffness: 1e7, // Added friction stiffness
+                frictionEquationRegularizationTime: 3 // Added friction regularization
             }
         );
         this.world.addContactMaterial(defaultContactMaterial);
@@ -81,17 +84,31 @@ class XmasGame {
 
     setupScene() {
         // Setup lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);  // Increased from 0.1 to 0.15
         this.scene.add(ambientLight);
         
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        directionalLight.position.set(5, 5, 5);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);  // Increased from 0.4 to 0.6
+        directionalLight.position.set(-10, 15, 5);
         directionalLight.castShadow = true;
+        
+        // Configure shadow properties
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.far = 50;
+        directionalLight.shadow.camera.left = -20;
+        directionalLight.shadow.camera.right = 20;
+        directionalLight.shadow.camera.top = 20;
+        directionalLight.shadow.camera.bottom = -20;
+        directionalLight.shadow.bias = -0.001;
+        
         this.scene.add(directionalLight);
 
-        // Enable shadows in renderer
+        // Enable shadows in renderer with better color precision
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.outputEncoding = THREE.sRGBEncoding;  // Added sRGB encoding for better color accuracy
+        this.renderer.toneMapping = THREE.NoToneMapping;    // Disabled tone mapping to preserve colors
 
         // Position camera lower and further back for better sky view
         this.camera.position.set(0, 1, 12);
@@ -118,7 +135,7 @@ class XmasGame {
                     side: THREE.DoubleSide,
                     transparent: true,
                     depthWrite: false,
-                    color: 0x666666  // Darken the texture slightly
+                    color: 0x333333  // Darkened from 0x666666 to reduce environment light
                 });
                 
                 const background = new THREE.Mesh(bgGeometry, bgMaterial);
@@ -138,13 +155,13 @@ class XmasGame {
                 this.scene.environment = envMap;  // Set scene environment
 
                 // Now create the ground with reflection
-                const groundGeometry = new THREE.PlaneGeometry(20, 160);  // Double length from 80 to 160
+                const groundGeometry = new THREE.PlaneGeometry(100, 160);  // Increased width from 20 to 100 for better coverage
                 
                 // Load snow texture
                 const snowTexture = new THREE.TextureLoader().load('snow.jpg');
                 snowTexture.wrapS = THREE.RepeatWrapping;
                 snowTexture.wrapT = THREE.RepeatWrapping;
-                snowTexture.repeat.set(4, 32);  // Repeat texture to avoid stretching
+                snowTexture.repeat.set(2, 8);  // Reduced from 8,32 to 2,8 for less zoomed in appearance
                 
                 const groundMaterial = new THREE.MeshPhysicalMaterial({
                     color: 0xffffff,  // Pure white to preserve texture color
@@ -159,7 +176,7 @@ class XmasGame {
                 });
 
                 this.ground = new THREE.Mesh(groundGeometry, groundMaterial);
-                this.ground.rotation.x = Math.PI / 2;
+                this.ground.rotation.x = -Math.PI / 2;  // Changed from Math.PI/2 to -Math.PI/2 to face up
                 this.ground.position.y = -2;
                 this.ground.position.z = 60;
                 this.ground.receiveShadow = true;
@@ -279,11 +296,11 @@ class XmasGame {
         });
     }
 
-    setupCard() {
-        // Load card texture first to get dimensions
+    setupCard(cardFile) {
+        // Load and setup card texture
         const textureLoader = new THREE.TextureLoader();
         textureLoader.load(
-            'kortti.jpeg',
+            cardFile,
             (texture) => {
                 console.log('Texture loaded successfully');
                 this.debugElement.innerHTML += 'Texture loaded<br>';
@@ -293,9 +310,7 @@ class XmasGame {
                 const imageHeight = texture.image.height;
                 const aspectRatio = imageHeight / imageWidth;
                 
-                // Create card with correct aspect ratio
-                // Increased base width from 3 to 4 units
-                const cardWidth = 4;  // Changed from 3 to 4
+                const cardWidth = 4;
                 const cardHeight = cardWidth * aspectRatio;
                 
                 console.log('Card dimensions:', {
@@ -307,13 +322,50 @@ class XmasGame {
                 const cardGeometry = new THREE.PlaneGeometry(cardWidth, cardHeight);
                 const cardMaterial = new THREE.MeshStandardMaterial({ 
                     map: texture,
-                    color: 0xffffff,
+                    color: 0xffffff,     // Keep pure white
+                    side: THREE.DoubleSide,
+                    roughness: 0.0,      // Keep at 0 for clearest image
+                    metalness: 0.0,      // Keep at 0
+                    emissive: 0x000000,
+                    emissiveIntensity: 0.0,
+                    envMapIntensity: 0.0  // No environment lighting
+                });
+
+                // Adjust texture properties for better contrast and brightness
+                texture.encoding = THREE.LinearEncoding;  // Linear encoding for direct color control
+                texture.minFilter = THREE.LinearFilter;
+                texture.magFilter = THREE.LinearFilter;
+                texture.generateMipmaps = false;
+                
+                // Create a custom shader material for enhanced brightness
+                const customMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        map: { value: texture },
+                        brightness: { value: 1.05 }  // Reduced from 1.15 to 1.05
+                    },
+                    vertexShader: `
+                        varying vec2 vUv;
+                        void main() {
+                            vUv = uv;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform sampler2D map;
+                        uniform float brightness;
+                        varying vec2 vUv;
+                        void main() {
+                            vec4 texColor = texture2D(map, vUv);
+                            gl_FragColor = vec4(texColor.rgb * brightness, texColor.a);
+                        }
+                    `,
                     side: THREE.DoubleSide
                 });
                 
-                this.card = new THREE.Mesh(cardGeometry, cardMaterial);
-                // Move the card slightly back to maintain good perspective
+                this.card = new THREE.Mesh(cardGeometry, customMaterial);
+                // Move the card slightly back and up
                 this.card.position.z = -1;
+                this.card.position.y = 1;  // Added Y offset to raise card
                 this.scene.add(this.card);
 
                 // Create snow overlays with matching dimensions
@@ -364,25 +416,25 @@ class XmasGame {
                 this.card.add(this.snowOverlayFront);
                 this.card.add(this.snowOverlayBack);
 
-                // Update physics body to match new dimensions
-                const cardShape = new CANNON.Box(new CANNON.Vec3(cardWidth/2, cardHeight/2, 0.1));
+                // Update physics body to match new dimensions and position
+                const cardShape = new CANNON.Box(new CANNON.Vec3(cardWidth/2, cardHeight/2, 0.2));
                 this.cardBody = new CANNON.Body({
                     mass: 1,
-                    type: CANNON.Body.DYNAMIC
+                    type: CANNON.Body.DYNAMIC,
+                    linearDamping: 0.3,
+                    angularDamping: 0.3,
+                    allowSleep: false
                 });
                 this.cardBody.addShape(cardShape);
-                this.cardBody.position.set(0, 0, -1); // Match visual position
-                
-                this.cardBody.linearDamping = 0.3;
-                this.cardBody.angularDamping = 0.3;
+                this.cardBody.position.set(0, 1, -1);  // Match visual position
                 
                 this.world.addBody(this.cardBody);
 
-                // Adjust anchor point for larger card
+                // Adjust anchor point higher
                 this.anchorBody = new CANNON.Body({
                     mass: 0,
                     type: CANNON.Body.STATIC,
-                    position: new CANNON.Vec3(0, cardHeight/2 + 0.5, -1)  // Match card Z position
+                    position: new CANNON.Vec3(0, cardHeight/2 + 1.5, -1)  // Increased Y offset
                 });
                 this.world.addBody(this.anchorBody);
 
@@ -634,10 +686,11 @@ class XmasGame {
         this.aimLine.geometry.setFromPoints([]);
 
         // Calculate snowball size
-        const snowballSize = parseFloat(this.sizeSlider.value) * 0.1;
+        const snowballSize = parseFloat(this.sizeSlider.value) * 0.05;
+        const visualSnowballSize = snowballSize * 0.5;
 
-        // Create snowball at cannon's muzzle
-        const geometry = new THREE.SphereGeometry(snowballSize);
+        // Create snowball at cannon's muzzle with smaller visual size
+        const geometry = new THREE.SphereGeometry(visualSnowballSize);
         const material = new THREE.MeshStandardMaterial({ 
             color: 0xffffff,
             metalness: 0.1,
@@ -653,22 +706,40 @@ class XmasGame {
         snowballMesh.position.copy(this.cannonMesh.position).add(muzzleOffset);
         this.scene.add(snowballMesh);
 
-        // Create physics snowball with adjusted properties
+        // Create physics snowball with CCD enabled
         const snowballBody = new CANNON.Body({
             mass: 0.1,
             type: CANNON.Body.DYNAMIC,
             shape: new CANNON.Sphere(snowballSize),
-            linearDamping: 0.1,  // Added damping to reduce bouncing
-            angularDamping: 0.1
+            linearDamping: 0.1,
+            angularDamping: 0.1,
+            allowSleep: false  // Prevent snowballs from sleeping
         });
+        
+        // Enable CCD (Continuous Collision Detection) for fast-moving snowballs
+        snowballBody.ccdSpeedThreshold = 1;  // Enable CCD when velocity is above 1 unit per second
+        snowballBody.ccdIterations = 2;      // Number of CCD passes
         snowballBody.position.copy(snowballMesh.position);
         
-        // Get direction for velocity
-        direction.set(0, 0, -1);
-        direction.applyEuler(this.cannonMesh.rotation);
-        
-        // Apply velocity using the current power setting
-        const speed = this.currentPower * 0.5;
+        // Calculate shooting direction and velocity
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        // Calculate angles
+        const azimuthAngle = x * Math.PI / 2;  // Removed negative sign to fix direction
+        const elevationAngle = (y + 1) * Math.PI / 4;  // 0 to 90 degrees
+
+        // Create direction vector using spherical coordinates for consistent power
+        direction.set(
+            Math.sin(azimuthAngle) * Math.cos(elevationAngle),
+            Math.sin(elevationAngle),
+            -Math.cos(azimuthAngle) * Math.cos(elevationAngle)
+        );
+        direction.normalize();
+
+        // Apply velocity with consistent power
+        const speed = this.currentPower * 1.0;
         snowballBody.velocity.set(
             direction.x * speed,
             direction.y * speed,
@@ -830,61 +901,54 @@ class XmasGame {
     }
 
     createVoxelTree(x, z, height) {
-        const trunkHeight = height * 0.3;  // Reduced to 30% of total height for fir proportions
+        const trunkHeight = height * 0.3;
         const treeGroup = new THREE.Group();
         
         // Create trunk material with darker wood texture
         const trunkMaterial = new THREE.MeshLambertMaterial({ 
-            color: 0x3d2817  // Darker brown for fir trunk
+            color: 0x3d2817
         });
 
         // Create leaves material with darker, more saturated green
         const leavesMaterial = new THREE.MeshLambertMaterial({ 
-            color: 0x0f5032  // Darker green for fir needles
+            color: 0x0f5032
         });
 
-        // Create trunk
-        const trunkGeometry = new THREE.BoxGeometry(0.8, trunkHeight, 0.8);  // Slightly thinner trunk
+        // Create trunk with shadows
+        const trunkGeometry = new THREE.BoxGeometry(0.8, trunkHeight, 0.8);
         const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-        trunk.position.set(0, trunkHeight/2, 0);  // Position trunk half its height up
+        trunk.position.set(0, trunkHeight/2, 0);
         trunk.castShadow = true;
         trunk.receiveShadow = true;
         treeGroup.add(trunk);
 
-        // Create leaves (conical structure with more layers)
-        const leavesLayers = 6;  // More layers for a denser look
-        const maxLeafWidth = 4;  // Wider base for more conical shape
+        // Create leaves with shadows
+        const leavesLayers = 6;
+        const maxLeafWidth = 4;
 
         for (let layer = 0; layer < leavesLayers; layer++) {
-            // Calculate layer properties for a more conical shape
             const layerProgress = layer / leavesLayers;
-            const layerSize = maxLeafWidth * (1 - layerProgress * 0.8);  // Gradual size reduction
-            const yPos = trunkHeight + (layer * 0.8);  // Slightly overlap layers
+            const layerSize = maxLeafWidth * (1 - layerProgress * 0.8);
+            const yPos = trunkHeight + (layer * 0.8);
             
-            // Create each block in the layer
             for (let dx = -layerSize; dx <= layerSize; dx++) {
                 for (let dz = -layerSize; dz <= layerSize; dz++) {
-                    // Skip blocks that are too far from center to create circular layers
                     const distFromCenter = Math.sqrt(dx * dx + dz * dz);
                     if (distFromCenter > layerSize) continue;
-                    
-                    // Skip some inner blocks randomly for variation
                     if (distFromCenter < layerSize - 0.5 && Math.random() < 0.3) continue;
                     
                     const leafGeometry = new THREE.BoxGeometry(0.9, 0.9, 0.9);
                     const leaf = new THREE.Mesh(leafGeometry, leavesMaterial);
                     
-                    // Add slight random offset for less uniform look
                     const offsetX = (Math.random() - 0.5) * 0.2;
                     const offsetZ = (Math.random() - 0.5) * 0.2;
                     
                     leaf.position.set(
-                        dx * 0.5 + offsetX,  // Tighter spacing
+                        dx * 0.5 + offsetX,
                         yPos,
-                        dz * 0.5 + offsetZ   // Tighter spacing
+                        dz * 0.5 + offsetZ
                     );
                     
-                    // Rotate each leaf slightly for more natural look
                     leaf.rotation.y = Math.random() * Math.PI * 0.25;
                     
                     leaf.castShadow = true;
@@ -894,8 +958,7 @@ class XmasGame {
             }
         }
 
-        // Position the entire tree at ground level (y=-2)
-        treeGroup.position.set(x, -2, z);  // Changed from 0 to -2 to match ground plane
+        treeGroup.position.set(x, -2, z);
         return treeGroup;
     }
 
@@ -916,6 +979,36 @@ class XmasGame {
             const tree = this.createVoxelTree(pos.x, pos.z, pos.height);
             this.scene.add(tree);
         });
+    }
+
+    setupCardSelection() {
+        // Add click handlers for card selection buttons
+        const buttons = document.querySelectorAll('.card-button');
+        buttons.forEach(button => {
+            button.addEventListener('click', () => {
+                const cardFile = button.getAttribute('data-card');
+                this.changeCard(cardFile);
+            });
+        });
+    }
+
+    changeCard(cardFile) {
+        // Remove existing card and its physics
+        if (this.card) {
+            this.scene.remove(this.card);
+            if (this.cardBody) {
+                this.world.removeBody(this.cardBody);
+            }
+            if (this.anchorBody) {
+                this.world.removeBody(this.anchorBody);
+            }
+            if (this.constraint) {
+                this.world.removeConstraint(this.constraint);
+            }
+        }
+
+        // Setup new card
+        this.setupCard(cardFile);
     }
 }
 
