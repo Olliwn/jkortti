@@ -23,30 +23,27 @@
             left: 0;
             top: 0;
             right: 0;
-            background: rgba(255, 255, 255, 0.8);
-            padding: 10px;
-            display: flex;
-            flex-direction: row;
-            flex-wrap: wrap;
-            gap: 5px;
-            justify-content: center;
-            max-height: 120px;
-            overflow-y: auto;
+            padding: 5px;
+            display: grid;
+            grid-template-rows: repeat(2, auto);
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
             z-index: 1000;
         }
         .card-button {
-            padding: 6px 12px;
-            background: #4CAF50;
+            padding: 4px 8px;
+            background: rgba(76, 175, 80, 0.8);
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             transition: background 0.3s;
-            font-size: 0.9em;
+            font-size: 0.85em;
             white-space: nowrap;
+            margin: 0;
         }
         .card-button:hover {
-            background: #45a049;
+            background: rgba(69, 160, 73, 0.9);
         }
         .slider-container {
             margin: 10px 0;
@@ -58,6 +55,16 @@
             color: white;
             font-family: monospace;
             pointer-events: none;
+        }
+        @media (max-width: 768px) {
+            #card-select {
+                grid-template-rows: repeat(3, auto);
+                grid-template-columns: repeat(4, 1fr);
+            }
+            .card-button {
+                font-size: 0.75em;
+                padding: 3px 6px;
+            }
         }
     </style>
 </head>
