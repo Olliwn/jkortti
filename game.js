@@ -144,6 +144,89 @@ class XmasGame {
         this.powerBar.position.set(1, -2.4, 4.1); // Slightly in front of background
         this.powerBar.scale.y = 0; // Start empty
         this.scene.add(this.powerBar);
+
+        // Create aiming guide overlay
+        const guideGeometry = new THREE.PlaneGeometry(2, 2);
+        const guideMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.1,
+            side: THREE.DoubleSide
+        });
+        this.aimGuide = new THREE.Mesh(guideGeometry, guideMaterial);
+        this.aimGuide.position.set(2, 0, 4); // Position to the right of the cannon
+        this.scene.add(this.aimGuide);
+
+        // Create aim point indicator
+        const aimPointGeometry = new THREE.CircleGeometry(0.05, 32);
+        const aimPointMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff0000,
+            transparent: true,
+            opacity: 0.5
+        });
+        this.aimPoint = new THREE.Mesh(aimPointGeometry, aimPointMaterial);
+        this.aimPoint.position.z = 0.01; // Slightly in front of guide
+        this.aimGuide.add(this.aimPoint);
+
+        // Add grid lines to show angle divisions
+        const gridMaterial = new THREE.LineBasicMaterial({ 
+            color: 0xffffff, 
+            transparent: true, 
+            opacity: 0.2 
+        });
+
+        // Horizontal lines (elevation angles)
+        for (let i = 0; i <= 4; i++) {
+            const y = -1 + (i * 0.5); // -1 to 1 in 4 steps
+            const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-1, y, 0),
+                new THREE.Vector3(1, y, 0)
+            ]);
+            const line = new THREE.Line(lineGeometry, gridMaterial);
+            this.aimGuide.add(line);
+        }
+
+        // Vertical lines (azimuth angles)
+        for (let i = 0; i <= 4; i++) {
+            const x = -1 + (i * 0.5); // -1 to 1 in 4 steps
+            const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(x, -1, 0),
+                new THREE.Vector3(x, 1, 0)
+            ]);
+            const line = new THREE.Line(lineGeometry, gridMaterial);
+            this.aimGuide.add(line);
+        }
+
+        // Add angle labels
+        const angles = [
+            { pos: new THREE.Vector3(-1.1, 0, 0), text: "-90°" },
+            { pos: new THREE.Vector3(1.1, 0, 0), text: "90°" },
+            { pos: new THREE.Vector3(0, 1.1, 0), text: "90°" },
+            { pos: new THREE.Vector3(0, -1.1, 0), text: "0°" }
+        ];
+
+        angles.forEach(({ pos, text }) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, canvas.width/2, canvas.height/2);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const labelMaterial = new THREE.SpriteMaterial({
+                map: texture,
+                transparent: true,
+                opacity: 0.5
+            });
+            const label = new THREE.Sprite(labelMaterial);
+            label.position.copy(pos);
+            label.scale.set(0.5, 0.25, 1);
+            this.aimGuide.add(label);
+        });
     }
 
     setupCard() {
@@ -344,14 +427,15 @@ class XmasGame {
         const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-        // Convert to polar coordinates
-        // Horizontal angle: -90 to +90 degrees
+        // Update aim point position on guide
+        if (this.aimPoint) {
+            this.aimPoint.position.x = x;
+            this.aimPoint.position.y = y;
+        }
+
+        // Rest of the existing updateAimVisuals code...
         const azimuthAngle = (-x * Math.PI / 2);
-        
-        // Vertical angle: 0 to 90 degrees
-        // Map y from [-1, 1] directly to [0, PI/2]
-        // This ensures a more linear and intuitive vertical aiming
-        const elevationAngle = Math.max(0, Math.min(Math.PI / 2, (y + 1) * Math.PI / 2));
+        const elevationAngle = (y + 1) * Math.PI / 4;
 
         // Update cannon orientation
         this.cannonMesh.rotation.set(0, 0, 0);
@@ -362,8 +446,8 @@ class XmasGame {
         const direction = new THREE.Vector3(0, 0, -1);
         direction.applyEuler(this.cannonMesh.rotation);
 
-        // Update aim line - make it longer for better visibility at high power
-        const aimLength = 4 + this.currentPower * 0.05;  // Adjusted for higher power range
+        // Update aim line
+        const aimLength = 4 + this.currentPower * 0.05;
         const points = [
             this.cannonMesh.position.clone(),
             this.cannonMesh.position.clone().add(direction.multiplyScalar(aimLength))
@@ -378,7 +462,8 @@ class XmasGame {
         // Hide aim line
         this.aimLine.geometry.setFromPoints([]);
 
-        const snowballSize = parseFloat(this.sizeSlider.value) * 0.2;
+        // Calculate snowball size (halved from previous)
+        const snowballSize = parseFloat(this.sizeSlider.value) * 0.1; // Changed from 0.2 to 0.1
 
         // Create snowball at cannon's muzzle
         const geometry = new THREE.SphereGeometry(snowballSize);
@@ -395,7 +480,7 @@ class XmasGame {
 
         // Create physics snowball
         const snowballBody = new CANNON.Body({
-            mass: 0.1,
+            mass: 0.1, // Keep mass constant regardless of size
             type: CANNON.Body.DYNAMIC,
             shape: new CANNON.Sphere(snowballSize)
         });
@@ -406,7 +491,8 @@ class XmasGame {
         direction.applyEuler(this.cannonMesh.rotation);
         
         // Apply velocity using the current power setting
-        const speed = this.currentPower * 0.5;  // Kept the same ratio for physics stability
+        // Power is now independent of snowball size
+        const speed = this.currentPower * 0.5;
         snowballBody.velocity.set(
             direction.x * speed,
             direction.y * speed,
